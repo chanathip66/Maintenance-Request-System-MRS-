@@ -1,0 +1,1157 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ระบบแจ้งซ่อมอุปกรณ์สำนักงาน · ฝ่ายเทคโนโลยีสารสนเทศ</title>
+
+<!-- ===== Fonts: IBM Plex Serif / IBM Plex Sans Thai / IBM Plex Mono ===== -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Thai:wght@400;500;600&family=IBM+Plex+Serif:wght@500;600;700&display=swap" rel="stylesheet">
+
+<!-- ===== Tailwind CSS (CDN) ===== -->
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    darkMode: 'class',
+    theme: {
+      extend: {
+        colors: {
+          paper:      '#FAF7F2',
+          'paper-dk': '#211D19',
+          card:       '#FFFFFF',
+          'card-dk':  '#2A2521',
+          ink:        '#2B2620',
+          'ink-dk':   '#E8E2D8',
+          sub:        '#6B655C',
+          'sub-dk':   '#A89E8F',
+          line:       '#DDD6CB',
+          'line-dk':  '#443C33',
+          navy:       '#1E3A5F',
+          'navy-dk':  '#7FA3CC'
+        },
+        fontFamily: {
+          serif: ['"IBM Plex Serif"', 'serif'],
+          sans:  ['"IBM Plex Sans Thai"', 'sans-serif'],
+          mono:  ['"IBM Plex Mono"', 'monospace']
+        }
+      }
+    }
+  }
+</script>
+
+<!-- ===== โหลดธีมก่อนแสดงผล (กันจอกะพริบ) ===== -->
+<script>
+  if (localStorage.getItem('repair-theme') === 'dark') {
+    document.documentElement.classList.add('dark');
+  }
+</script>
+
+<style>
+  /* ===== Custom CSS เฉพาะจุดที่ Tailwind ไม่ครอบ ===== */
+  body { -webkit-font-smoothing: antialiased; }
+
+  /* Native select บน Windows ต้องกำหนดสี option โดยตรง ไม่เช่นนั้น Dark mode
+     อาจใช้ตัวอักษรสีอ่อนบนรายการพื้นขาวจนอ่านไม่ออก */
+  select { color-scheme: light; background-color: #FFFFFF; color: #2B2620; }
+  select option { background-color: #FFFFFF; color: #2B2620; }
+  .dark select { color-scheme: dark; background-color: #2A2521; color: #E8E2D8; }
+  .dark select option { background-color: #2A2521; color: #E8E2D8; }
+  select option:disabled { color: #8A8578; }
+
+  /* จุดสถานะเล็ก ๆ หน้าข้อความ (ห้ามใช้ badge พื้นสีเต็ม) */
+  .status-dot { width: 8px; height: 8px; border-radius: 9999px; display: inline-block; flex-shrink: 0; }
+
+  /* แถบเลื่อนให้เข้ากับโทนกระดาษ */
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #C9C1B4; border-radius: 6px; border: 2px solid transparent; background-clip: content-box; }
+  .dark ::-webkit-scrollbar-thumb { background: #4A4239; border: 2px solid transparent; background-clip: content-box; }
+
+  /* Slide-in panel */
+  #slidePanel { transition: transform .32s cubic-bezier(.4,0,.2,1); }
+
+  /* Fade-in ตอนสลับหน้า */
+  .fade-in { animation: fadeIn .25s ease both; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+  /* Timeline เส้นแนวตั้งเรียบ ๆ */
+  .timeline-item { position: relative; padding-left: 1.5rem; padding-bottom: 1.1rem; }
+  .timeline-item::before { content:''; position:absolute; left:4px; top:7px; width:7px; height:7px; border-radius:50%; background:#8A8578; }
+  .timeline-item::after  { content:''; position:absolute; left:7px; top:18px; bottom:0; width:1px; background:#DDD6CB; }
+  .dark .timeline-item::after { background:#443C33; }
+  .timeline-item:last-child::after { display:none; }
+  .timeline-item:last-child { padding-bottom: 0; }
+
+  /* Skeleton ใช้สีพื้นแบบ pulse เพื่อคงข้อกำหนดห้ามใช้ gradient */
+  .skeleton-block { background: #E6E0D7; animation: skeletonPulse 1.25s ease-in-out infinite; }
+  .dark .skeleton-block { background: #3A342E; }
+  @keyframes skeletonPulse { 0%, 100% { opacity: .45; } 50% { opacity: .9; } }
+  @media (prefers-reduced-motion: reduce) { .skeleton-block { animation: none; } }
+</style>
+</head>
+
+<body class="bg-paper dark:bg-paper-dk text-ink dark:text-ink-dk font-sans min-h-screen flex flex-col transition-colors duration-200">
+
+<!-- ============================================================
+     VIEW 1 : หน้าเข้าสู่ระบบ / ลงทะเบียน (Auth)
+============================================================ -->
+<div id="authView" class="flex-1 flex items-center justify-center px-4 py-12 fade-in">
+  <div class="w-full max-w-md">
+
+    <!-- ปุ่มสลับธีม (มุมขวาบนของหน้า auth) -->
+    <div class="flex justify-end mb-4">
+      <button type="button" data-theme-toggle aria-label="สลับธีมสี"
+        class="p-2 border border-line dark:border-line-dk text-sub dark:text-sub-dk hover:text-navy dark:hover:text-navy-dk hover:border-navy dark:hover:border-navy-dk transition-colors">
+        <svg class="w-4 h-4 block dark:hidden" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z"/></svg>
+        <svg class="w-4 h-4 hidden dark:block" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z"/></svg>
+      </button>
+    </div>
+
+    <div class="text-center mb-7">
+      <h1 class="font-serif text-[26px] leading-snug font-semibold">ระบบแจ้งซ่อมอุปกรณ์สำนักงาน</h1>
+      <p class="text-sm text-sub dark:text-sub-dk mt-2">ทะเบียนงานซ่อมภายในองค์กร · ฝ่ายเทคโนโลยีสารสนเทศ</p>
+    </div>
+
+    <!-- การ์ดฟอร์มกระดาษ -->
+    <div class="bg-card dark:bg-card-dk border border-line dark:border-line-dk shadow-[0_1px_3px_rgba(43,38,32,0.06)]">
+
+      <!-- แท็บสลับ เข้าสู่ระบบ / ลงทะเบียน -->
+      <div class="flex text-sm border-b border-line dark:border-line-dk">
+        <button type="button" id="tabLogin"    class="flex-1 py-3 border-b-2 border-navy dark:border-navy-dk text-navy dark:text-navy-dk font-medium transition-colors">เข้าสู่ระบบ</button>
+        <button type="button" id="tabRegister" class="flex-1 py-3 border-b-2 border-transparent text-sub dark:text-sub-dk hover:text-ink dark:hover:text-ink-dk transition-colors">ลงทะเบียน</button>
+      </div>
+
+      <div class="p-6 sm:p-7">
+
+        <!-- ===== ฟอร์มเข้าสู่ระบบ ===== -->
+        <form id="loginForm" novalidate>
+          <div class="space-y-4">
+            <div>
+              <label for="loginUsername" class="block text-xs text-sub dark:text-sub-dk mb-1.5">ชื่อผู้ใช้</label>
+              <input id="loginUsername" type="text" autocomplete="username"
+                class="w-full border border-line dark:border-line-dk bg-transparent px-3 py-2.5 text-sm rounded-none outline-none focus:border-navy dark:focus:border-navy-dk transition-colors">
+              <p id="errLoginUsername" class="hidden text-xs text-[#B3472E] mt-1.5"></p>
+            </div>
+            <div>
+              <label for="loginPassword" class="block text-xs text-sub dark:text-sub-dk mb-1.5">รหัสผ่าน</label>
+              <input id="loginPassword" type="password" autocomplete="current-password"
+                class="w-full border border-line dark:border-line-dk bg-transparent px-3 py-2.5 text-sm rounded-none outline-none focus:border-navy dark:focus:border-navy-dk transition-colors">
+              <p id="errLoginPassword" class="hidden text-xs text-[#B3472E] mt-1.5"></p>
+            </div>
+            <p id="errLogin" class="hidden text-xs text-[#B3472E]"></p>
+            <div class="pt-1">
+              <button type="submit" class="w-full bg-navy dark:bg-navy-dk text-white dark:text-[#211D19] px-4 py-2.5 text-sm font-medium rounded-none hover:opacity-90 active:opacity-80 transition-opacity">เข้าสู่ระบบ</button>
+            </div>
+            <p class="text-xs text-sub dark:text-sub-dk leading-relaxed">ใช้บัญชีที่ลงทะเบียนไว้ในระบบทะเบียนงานซ่อม</p>
+          </div>
+        </form>
+
+        <!-- ===== ฟอร์มลงทะเบียน ===== -->
+        <form id="registerForm" class="hidden" novalidate>
+          <div class="space-y-4">
+            <div>
+              <label for="regUsername" class="block text-xs text-sub dark:text-sub-dk mb-1.5">ชื่อผู้ใช้ (ภาษาอังกฤษ)</label>
+              <input id="regUsername" type="text" autocomplete="username"
+                class="w-full border border-line dark:border-line-dk bg-transparent px-3 py-2.5 text-sm rounded-none outline-none focus:border-navy dark:focus:border-navy-dk transition-colors">
+              <p id="errRegUsername" class="hidden text-xs text-[#B3472E] mt-1.5"></p>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label for="regPassword" class="block text-xs text-sub dark:text-sub-dk mb-1.5">รหัสผ่าน</label>
+                <input id="regPassword" type="password" autocomplete="new-password"
+                  class="w-full border border-line dark:border-line-dk bg-transparent px-3 py-2.5 text-sm rounded-none outline-none focus:border-navy dark:focus:border-navy-dk transition-colors">
+                <p id="errRegPassword" class="hidden text-xs text-[#B3472E] mt-1.5"></p>
+              </div>
+              <div>
+                <label for="regConfirm" class="block text-xs text-sub dark:text-sub-dk mb-1.5">ยืนยันรหัสผ่าน</label>
+                <input id="regConfirm" type="password" autocomplete="new-password"
+                  class="w-full border border-line dark:border-line-dk bg-transparent px-3 py-2.5 text-sm rounded-none outline-none focus:border-navy dark:focus:border-navy-dk transition-colors">
+                <p id="errRegConfirm" class="hidden text-xs text-[#B3472E] mt-1.5"></p>
+              </div>
+            </div>
+            <div>
+              <label for="regFullName" class="block text-xs text-sub dark:text-sub-dk mb-1.5">ชื่อ-นามสกุล</label>
+              <input id="regFullName" type="text"
+                class="w-full border border-line dark:border-line-dk bg-transparent px-3 py-2.5 text-sm rounded-none outline-none focus:border-navy dark:focus:border-navy-dk transition-colors">
+              <p id="errRegFullName" class="hidden text-xs text-[#B3472E] mt-1.5"></p>
+            </div>
+            <div>
+              <label for="regDepartment" class="block text-xs text-sub dark:text-sub-dk mb-1.5">หน่วยงาน/แผนก</label>
+              <input id="regDepartment" type="text"
+                class="w-full border border-line dark:border-line-dk bg-transparent px-3 py-2.5 text-sm rounded-none outline-none focus:border-navy dark:focus:border-navy-dk transition-colors">
+              <p id="errRegDepartment" class="hidden text-xs text-[#B3472E] mt-1.5"></p>
+            </div>
+            <div>
+              <label for="regEmail" class="block text-xs text-sub dark:text-sub-dk mb-1.5">อีเมล</label>
+              <input id="regEmail" type="email" autocomplete="email"
+                class="w-full border border-line dark:border-line-dk bg-transparent px-3 py-2.5 text-sm rounded-none outline-none focus:border-navy dark:focus:border-navy-dk transition-colors">
+              <p id="errRegEmail" class="hidden text-xs text-[#B3472E] mt-1.5"></p>
+            </div>
+            <div class="pt-1">
+              <button type="submit" class="w-full bg-navy dark:bg-navy-dk text-white dark:text-[#211D19] px-4 py-2.5 text-sm font-medium rounded-none hover:opacity-90 active:opacity-80 transition-opacity">ลงทะเบียนและเข้าสู่ระบบ</button>
+            </div>
+          </div>
+        </form>
+
+        <!-- ===== ช่องทางผู้ดูแลระบบ ===== -->
+        <div class="mt-6 pt-4 border-t border-line dark:border-line-dk">
+          <button type="button" id="adminToggle" class="text-xs text-sub dark:text-sub-dk hover:text-navy dark:hover:text-navy-dk hover:underline underline-offset-2 transition-colors">สำหรับผู้ดูแลระบบ (ฝ่าย IT)</button>
+          <form id="adminForm" class="hidden mt-3" novalidate>
+            <label for="adminCode" class="block text-xs text-sub dark:text-sub-dk mb-1.5">รหัสเข้าใช้งานผู้ดูแล</label>
+            <div class="flex gap-2">
+              <input id="adminCode" type="password"
+                class="flex-1 border border-line dark:border-line-dk bg-transparent px-3 py-2.5 text-sm rounded-none outline-none focus:border-navy dark:focus:border-navy-dk transition-colors font-mono">
+              <button type="submit" class="bg-navy dark:bg-navy-dk text-white dark:text-[#211D19] px-4 py-2.5 text-sm font-medium rounded-none hover:opacity-90 transition-opacity">เข้าระบบ</button>
+            </div>
+            <p id="errAdmin" class="hidden text-xs text-[#B3472E] mt-1.5"></p>
+          </form>
+        </div>
+
+      </div>
+    </div>
+
+    <p class="text-center text-xs text-sub dark:text-sub-dk mt-6">ฝ่ายเทคโนโลยีสารสนเทศ · โทรภายใน 2204</p>
+  </div>
+</div>
+
+<!-- ============================================================
+     VIEW 2/3 : หน้าหลัก (ผู้แจ้ง / ผู้ดูแล ใช้โครงเดียวกัน)
+============================================================ -->
+<div id="appView" class="hidden flex-1 flex-col min-h-screen fade-in">
+
+  <!-- ===== Header แถบเรียบ: ชื่อระบบ + วันที่ ===== -->
+  <header class="border-b border-line dark:border-line-dk bg-card dark:bg-card-dk">
+    <div class="max-w-[1400px] mx-auto px-4 sm:px-6 py-4 flex items-center justify-between gap-4">
+      <div class="min-w-0">
+        <h1 class="font-serif text-lg sm:text-xl font-semibold truncate">ระบบแจ้งซ่อมอุปกรณ์สำนักงาน</h1>
+        <p id="headerRole" class="text-xs text-sub dark:text-sub-dk mt-0.5">ทะเบียนงานซ่อมภายในองค์กร</p>
+      </div>
+      <div class="flex items-center gap-3 sm:gap-5 shrink-0">
+        <span id="headerDate" class="font-mono text-xs text-sub dark:text-sub-dk hidden md:block"></span>
+        <span id="headerUser" class="text-sm hidden sm:block"></span>
+        <button type="button" data-theme-toggle aria-label="สลับธีมสี"
+          class="p-2 border border-line dark:border-line-dk text-sub dark:text-sub-dk hover:text-navy dark:hover:text-navy-dk hover:border-navy dark:hover:border-navy-dk transition-colors">
+          <svg class="w-4 h-4 block dark:hidden" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z"/></svg>
+          <svg class="w-4 h-4 hidden dark:block" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z"/></svg>
+        </button>
+        <button type="button" id="logoutBtn" class="text-sm text-navy dark:text-navy-dk hover:underline underline-offset-2">ออกจากระบบ</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ===== เนื้อหาหลัก: Sidebar + ตาราง ===== -->
+  <div class="flex-1 max-w-[1400px] w-full mx-auto px-4 sm:px-6 py-6 flex flex-col md:flex-row gap-6 md:gap-8">
+
+    <!-- Sidebar ซ้าย 240px: ตัวกรอง -->
+    <aside id="sidebar" class="hidden md:block w-full md:w-60 md:shrink-0 md:sticky md:top-6 self-start">
+      <h2 class="font-serif text-sm font-semibold mb-4">สมุดทะเบียนงานซ่อม</h2>
+      <div id="filterGroups" class="space-y-7"></div>
+    </aside>
+
+    <!-- เนื้อหาหลัก -->
+    <main class="flex-1 min-w-0">
+
+      <!-- แถบสรุปบรรทัดเดียว + ปุ่มแจ้งซ่อมใหม่ -->
+      <div class="flex items-start justify-between gap-4 flex-wrap">
+        <div class="min-w-0">
+          <p id="summaryLine" class="text-sm text-sub dark:text-sub-dk leading-relaxed"></p>
+          <p id="flashMsg" class="hidden text-sm text-[#1F5C42] mt-1" role="status" aria-live="polite"></p>
+          <p id="syncStatus" class="font-mono text-[11px] text-sub dark:text-sub-dk mt-1" aria-live="polite"></p>
+        </div>
+        <div class="flex items-center gap-3 shrink-0">
+          <button type="button" id="filterToggleMobile" class="md:hidden text-sm text-navy dark:text-navy-dk hover:underline underline-offset-2">ตัวกรอง</button>
+          <button type="button" id="refreshBtn" aria-label="รีเฟรชข้อมูล" title="รีเฟรชข้อมูล"
+            class="p-2 border border-line dark:border-line-dk text-sub dark:text-sub-dk hover:text-navy dark:hover:text-navy-dk hover:border-navy dark:hover:border-navy-dk disabled:opacity-50 transition-colors">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992V4.356m-1.636 5.012A9 9 0 106.228 18.3L3 15.073"/></svg>
+          </button>
+          <button type="button" id="newTicketBtn"
+            class="bg-navy dark:bg-navy-dk text-white dark:text-[#211D19] px-4 py-2 text-sm font-medium rounded-none hover:opacity-90 active:opacity-80 transition-opacity">แจ้งซ่อมใหม่</button>
+        </div>
+      </div>
+
+      <!-- ตารางรายการแจ้งซ่อม (bordered) -->
+      <div class="mt-5 overflow-x-auto border border-line dark:border-line-dk bg-card dark:bg-card-dk">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-line dark:border-line-dk">
+              <th class="text-left text-xs font-normal text-sub dark:text-sub-dk px-3 py-2.5 whitespace-nowrap">เลขที่ใบแจ้งซ่อม</th>
+              <th class="text-left text-xs font-normal text-sub dark:text-sub-dk px-3 py-2.5 whitespace-nowrap">วันที่แจ้ง</th>
+              <th class="text-left text-xs font-normal text-sub dark:text-sub-dk px-3 py-2.5 whitespace-nowrap">อุปกรณ์</th>
+              <th class="text-left text-xs font-normal text-sub dark:text-sub-dk px-3 py-2.5">อาการเสีย</th>
+              <th class="text-left text-xs font-normal text-sub dark:text-sub-dk px-3 py-2.5 whitespace-nowrap">ผู้แจ้ง–แผนก</th>
+              <th class="text-left text-xs font-normal text-sub dark:text-sub-dk px-3 py-2.5 whitespace-nowrap">ผู้รับผิดชอบ</th>
+              <th class="text-left text-xs font-normal text-sub dark:text-sub-dk px-3 py-2.5 whitespace-nowrap">สถานะ</th>
+            </tr>
+          </thead>
+          <tbody id="ticketRows"></tbody>
+        </table>
+        <p id="emptyMsg" class="hidden text-sm text-sub dark:text-sub-dk text-center py-10">ไม่พบรายการที่ตรงกับตัวกรอง</p>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- ===== Footer เล็ก ๆ ===== -->
+  <footer class="border-t border-line dark:border-line-dk">
+    <p class="max-w-[1400px] mx-auto px-4 sm:px-6 py-4 text-xs text-sub dark:text-sub-dk">
+      ฝ่ายเทคโนโลยีสารสนเทศ · โทรภายใน 2204 · ระบบทะเบียนงานซ่อมภายในองค์กร
+    </p>
+  </footer>
+</div>
+
+<!-- ============================================================
+     Slide-in Panel ขวา 380px (ฟอร์มใบแจ้งซ่อม / รายละเอียดใบงาน)
+============================================================ -->
+<div id="slidePanel"
+  class="fixed top-0 right-0 h-full w-full sm:w-[380px] bg-card dark:bg-card-dk border-l border-line dark:border-line-dk translate-x-full z-40 flex flex-col shadow-[0_0_24px_rgba(43,38,32,0.08)]"
+  role="dialog" aria-labelledby="panelTitle" aria-hidden="true">
+
+  <div class="px-6 pt-5 pb-4 border-b border-line dark:border-line-dk flex items-start justify-between gap-3">
+    <div class="min-w-0">
+      <h2 id="panelTitle" class="font-serif text-lg font-semibold">ใบแจ้งซ่อม</h2>
+      <p id="panelTicketNo" class="font-mono text-xs text-sub dark:text-sub-dk mt-1"></p>
+    </div>
+    <button type="button" id="panelClose" class="text-sm text-sub dark:text-sub-dk hover:text-navy dark:hover:text-navy-dk hover:underline underline-offset-2 shrink-0 transition-colors">ปิด</button>
+  </div>
+
+  <div id="panelBody" class="flex-1 overflow-y-auto px-6 py-5"></div>
+</div>
+
+<!-- พื้นที่กดปิดแผง โดยไม่ใช้ Modal popup -->
+<button type="button" id="panelBackdrop" aria-label="ปิดแผงด้านข้าง"
+  class="hidden fixed inset-0 z-30 bg-[#2B2620]/10 cursor-default"></button>
+
+
+<script>
+const API_URL = 'https://script.google.com/macros/s/AKfycbyB9x6BXIP5J7B8FbPxEQK7S683Oz5LscfKhg5B3glxOTHWhcn02caLuFQT82IJXcBR/exec';
+const SESSION_KEY = 'repair-api-session';
+
+const statusColors = {
+  'รอรับเรื่อง': '#8A8578',
+  'กำลังดำเนินการ': '#B8860B',
+  'ซ่อมเสร็จแล้ว': '#1F5C42',
+  'ซ่อมไม่ได้/ส่งเคลม': '#B3472E'
+};
+const statusOptions = Object.keys(statusColors);
+const deviceOptions = ['คอมพิวเตอร์', 'เครื่องพิมพ์', 'เครื่องปรับอากาศ', 'โต๊ะ-เก้าอี้', 'ไฟฟ้า-แสงสว่าง', 'อื่น ๆ'];
+const urgencyOptions = ['ปกติ', 'ด่วน', 'ด่วนมาก-กระทบงานทั้งแผนก'];
+const $ = (id) => document.getElementById(id);
+const inputClass = 'w-full border border-line dark:border-line-dk bg-transparent px-3 py-2.5 text-sm rounded-none outline-none focus:border-navy dark:focus:border-navy-dk transition-colors';
+const labelClass = 'block text-xs text-sub dark:text-sub-dk mb-1.5';
+
+let currentSession = readSession();
+let tickets = [];
+let activeFilters = { status: 'ทั้งหมด', device: 'ทั้งหมด', department: 'ทั้งหมด' };
+let flashTimer = null;
+let ticketsRequestId = 0;
+
+class ApiError extends Error {
+  constructor(message, status = 0, details = null) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.details = details;
+  }
+}
+
+function readSession() {
+  try {
+    const value = JSON.parse(sessionStorage.getItem(SESSION_KEY));
+    return value?.token && value?.role ? value : null;
+  } catch (error) {
+    sessionStorage.removeItem(SESSION_KEY);
+    return null;
+  }
+}
+
+function saveSession(session) {
+  currentSession = session;
+  sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
+}
+
+function clearSession() {
+  currentSession = null;
+  tickets = [];
+  sessionStorage.removeItem(SESSION_KEY);
+}
+
+async function apiRequest(method, data = {}) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20000);
+  let url = API_URL;
+  const options = {
+    method,
+    mode: 'cors',
+    credentials: 'omit',
+    redirect: 'follow',
+    cache: 'no-store',
+    signal: controller.signal,
+    headers: { Accept: 'application/json' }
+  };
+
+  if (method === 'GET') {
+    const query = new URLSearchParams();
+    Object.entries(data).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') query.set(key, String(value));
+    });
+    url += `?${query.toString()}`;
+  } else {
+    // text/plain is a CORS-safelisted Content-Type and avoids OPTIONS preflight.
+    options.headers['Content-Type'] = 'text/plain;charset=utf-8';
+    options.body = JSON.stringify(data);
+  }
+
+  try {
+    const response = await fetch(url, options);
+    const text = await response.text();
+    let payload;
+    try {
+      payload = JSON.parse(text);
+    } catch (error) {
+      throw new ApiError('เซิร์ฟเวอร์ส่งข้อมูลกลับมาในรูปแบบที่ไม่ถูกต้อง', response.status);
+    }
+
+    const apiStatus = Number(payload.status || response.status);
+    if (!response.ok || payload.ok === false) {
+      throw new ApiError(payload.error?.message || 'API request failed', apiStatus, payload.error?.details);
+    }
+    return payload.data;
+  } catch (error) {
+    if (error.name === 'AbortError') throw new ApiError('หมดเวลารอการตอบกลับจากเซิร์ฟเวอร์');
+    if (error instanceof ApiError) throw error;
+    throw new ApiError('เชื่อมต่อระบบคลาวด์ไม่ได้ กรุณาตรวจสอบอินเทอร์เน็ตและการ Deploy Web App');
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+const apiGet = (params) => apiRequest('GET', params);
+const apiPost = (payload) => apiRequest('POST', payload);
+
+function friendlyError(error) {
+  if (error.status === 401) return 'ข้อมูลเข้าสู่ระบบไม่ถูกต้อง หรือเซสชันหมดอายุ';
+  if (error.status === 403) return 'บัญชีนี้ไม่มีสิทธิ์ดำเนินการ';
+  if (error.status === 404) return 'ไม่พบข้อมูลที่ต้องการ';
+  if (error.status === 409) return 'ชื่อผู้ใช้นี้ถูกใช้แล้ว';
+  if (error.status === 422) return error.message.replace('Missing field:', 'กรุณากรอกข้อมูล:');
+  if (error.details?.requiredSheet) {
+    return `ไม่พบชีต ${error.details.requiredSheet} กรุณารันฟังก์ชัน setupSheets ใน Apps Script`;
+  }
+  if (error.details?.expected && error.details?.actual) {
+    return `หัวตารางชีตไม่ถูกต้อง ต้องเป็น ${error.details.expected.join(', ')}`;
+  }
+  if (error.status === 500) {
+    return 'API บันทึกข้อมูลไม่ได้ กรุณาตรวจชีต KeyValue ให้มีหัวตาราง Key, Value และ Deploy Code.gs เวอร์ชันล่าสุด';
+  }
+  return error.message || 'เกิดข้อผิดพลาดในการเชื่อมต่อระบบ';
+}
+
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new ApiError(`อ่านไฟล์ ${file.name} ไม่สำเร็จ`));
+    reader.readAsDataURL(file);
+  });
+}
+
+function loadImage(dataUrl, fileName) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new ApiError(`ไฟล์ ${fileName} ไม่ใช่รูปภาพที่เปิดอ่านได้`));
+    image.src = dataUrl;
+  });
+}
+
+function canvasToBlob(canvas, type, quality) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) resolve(blob);
+      else reject(new ApiError('บีบอัดรูปภาพไม่สำเร็จ'));
+    }, type, quality);
+  });
+}
+
+async function prepareImageAttachment(file) {
+  if (!file.type.startsWith('image/')) throw new ApiError(`${file.name} ไม่ใช่ไฟล์รูปภาพ`);
+  if (file.size > 12 * 1024 * 1024) throw new ApiError(`${file.name} มีขนาดเกิน 12 MB`);
+
+  const dataUrl = await fileToDataUrl(file);
+  const image = await loadImage(dataUrl, file.name);
+  const maxDimension = 1280;
+  const scale = Math.min(1, maxDimension / Math.max(image.naturalWidth, image.naturalHeight));
+  const width = Math.max(1, Math.round(image.naturalWidth * scale));
+  const height = Math.max(1, Math.round(image.naturalHeight * scale));
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext('2d');
+  context.fillStyle = '#FFFFFF';
+  context.fillRect(0, 0, width, height);
+  context.drawImage(image, 0, 0, width, height);
+
+  const blob = await canvasToBlob(canvas, 'image/jpeg', 0.78);
+  if (blob.size > 1.7 * 1024 * 1024) throw new ApiError(`${file.name} ยังมีขนาดใหญ่เกินไปหลังบีบอัด`);
+  const compressedDataUrl = await fileToDataUrl(blob);
+  const baseName = file.name.replace(/\.[^.]+$/, '') || 'repair-image';
+  return {
+    name: `${baseName.slice(0, 80)}.jpg`,
+    mimeType: 'image/jpeg',
+    base64: compressedDataUrl.split(',')[1]
+  };
+}
+
+async function prepareImageAttachments(fileList) {
+  const files = [...fileList];
+  if (files.length > 3) throw new ApiError('แนบรูปได้ไม่เกิน 3 รูปต่อใบแจ้งซ่อม');
+  const attachments = [];
+  for (const file of files) attachments.push(await prepareImageAttachment(file));
+  return attachments;
+}
+
+function escapeHtml(value = '') {
+  return String(value).replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
+}
+
+function formatDate(value, includeTime = true) {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  const options = includeTime
+    ? { day: '2-digit', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' }
+    : { day: '2-digit', month: 'short', year: 'numeric' };
+  return new Intl.DateTimeFormat('th-TH', options).format(date);
+}
+
+function setError(id, message = '') {
+  const node = $(id);
+  node.textContent = message;
+  node.classList.toggle('hidden', !message);
+}
+
+function clearErrors(form) {
+  form.querySelectorAll('[id^="err"]').forEach((node) => {
+    node.textContent = '';
+    node.classList.add('hidden');
+  });
+}
+
+function setButtonBusy(button, busy, busyText = 'กำลังส่งข้อมูล...') {
+  if (!button) return;
+  if (busy) {
+    button.dataset.originalText = button.textContent;
+    button.textContent = busyText;
+    button.disabled = true;
+    button.classList.add('opacity-60', 'cursor-wait');
+  } else {
+    button.textContent = button.dataset.originalText || button.textContent;
+    button.disabled = false;
+    button.classList.remove('opacity-60', 'cursor-wait');
+  }
+}
+
+function setAuthTab(tab) {
+  const isLogin = tab === 'login';
+  $('loginForm').classList.toggle('hidden', !isLogin);
+  $('registerForm').classList.toggle('hidden', isLogin);
+  $('tabLogin').className = `flex-1 py-3 border-b-2 text-sm transition-colors ${isLogin ? 'border-navy dark:border-navy-dk text-navy dark:text-navy-dk font-medium' : 'border-transparent text-sub dark:text-sub-dk hover:text-ink dark:hover:text-ink-dk'}`;
+  $('tabRegister').className = `flex-1 py-3 border-b-2 text-sm transition-colors ${!isLogin ? 'border-navy dark:border-navy-dk text-navy dark:text-navy-dk font-medium' : 'border-transparent text-sub dark:text-sub-dk hover:text-ink dark:hover:text-ink-dk'}`;
+}
+
+async function showApp() {
+  activeFilters = { status: 'ทั้งหมด', device: 'ทั้งหมด', department: 'ทั้งหมด' };
+  $('authView').classList.add('hidden');
+  $('appView').classList.remove('hidden');
+  $('appView').classList.add('flex');
+  $('headerDate').textContent = new Intl.DateTimeFormat('th-TH', { dateStyle: 'long' }).format(new Date());
+
+  if (currentSession.role === 'admin') {
+    $('headerRole').textContent = 'ทะเบียนงานซ่อม · มุมมองผู้ดูแลระบบ';
+    $('headerUser').textContent = 'ผู้ดูแลฝ่าย IT';
+    $('newTicketBtn').classList.add('hidden');
+  } else {
+    $('headerRole').textContent = `ทะเบียนงานซ่อม · ${currentSession.user.Department}`;
+    $('headerUser').textContent = currentSession.user.FullName;
+    $('newTicketBtn').classList.remove('hidden');
+  }
+
+  await loadTickets();
+}
+
+async function logout({ notifyServer = true } = {}) {
+  const token = currentSession?.token;
+  ticketsRequestId += 1;
+  closePanel();
+  clearSession();
+  $('appView').classList.add('hidden');
+  $('appView').classList.remove('flex');
+  $('authView').classList.remove('hidden');
+  $('loginForm').reset();
+  $('adminForm').reset();
+  $('adminForm').classList.add('hidden');
+  setAuthTab('login');
+  if (notifyServer && token) {
+    try { await apiPost({ action: 'logout', token }); } catch (error) { /* Local logout still succeeds. */ }
+  }
+}
+
+function renderSkeletonRows(count = 6) {
+  const widths = [112, 82, 96, 210, 138, 92, 104];
+  $('emptyMsg').classList.add('hidden');
+  $('summaryLine').textContent = 'กำลังดึงทะเบียนงานซ่อมจากระบบคลาวด์';
+  $('ticketRows').setAttribute('aria-busy', 'true');
+  $('ticketRows').innerHTML = Array.from({ length: count }, (_, rowIndex) => `
+    <tr class="border-b last:border-b-0 border-line dark:border-line-dk" aria-hidden="true">
+      ${widths.map((width, columnIndex) => `
+        <td class="px-3 py-4 ${columnIndex === 3 ? 'min-w-[210px]' : ''}">
+          <span class="skeleton-block block h-3" style="width:${width - (rowIndex % 3) * 8}px;max-width:100%"></span>
+          ${[2, 4].includes(columnIndex) ? '<span class="skeleton-block block h-2 w-16 mt-2"></span>' : ''}
+        </td>`).join('')}
+    </tr>`).join('');
+}
+
+async function loadTickets({ preserveFilters = false } = {}) {
+  if (!currentSession) return;
+  const requestId = ++ticketsRequestId;
+  if (!preserveFilters) activeFilters = { status: 'ทั้งหมด', device: 'ทั้งหมด', department: 'ทั้งหมด' };
+  renderSkeletonRows();
+  $('syncStatus').textContent = 'กำลังซิงค์ข้อมูล...';
+  $('refreshBtn').disabled = true;
+
+  try {
+    const result = await apiGet({ resource: 'tickets', token: currentSession.token, limit: 500 });
+    if (requestId !== ticketsRequestId) return;
+    tickets = Array.isArray(result?.items) ? result.items : [];
+    renderAll();
+    $('syncStatus').textContent = `ซิงค์ล่าสุด ${new Intl.DateTimeFormat('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date())}`;
+  } catch (error) {
+    if (requestId !== ticketsRequestId) return;
+    if (error.status === 401) {
+      await logout({ notifyServer: false });
+      setError('errLogin', 'เซสชันหมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง');
+      return;
+    }
+    tickets = [];
+    renderAll();
+    $('syncStatus').textContent = 'ซิงค์ข้อมูลไม่สำเร็จ';
+    flash(friendlyError(error), true);
+  } finally {
+    if (requestId === ticketsRequestId) $('refreshBtn').disabled = false;
+  }
+}
+
+function countBy(items, key, value) {
+  return items.filter((item) => item[key] === value).length;
+}
+
+function renderFilters() {
+  const departments = [...new Set(tickets.map((ticket) => ticket.Department).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'th'));
+  const groups = [
+    { title: 'สถานะงาน', filterKey: 'status', dataKey: 'Status', options: statusOptions },
+    { title: 'ประเภทอุปกรณ์', filterKey: 'device', dataKey: 'DeviceType', options: deviceOptions },
+    { title: 'แผนกที่แจ้ง', filterKey: 'department', dataKey: 'Department', options: departments }
+  ];
+
+  $('filterGroups').innerHTML = groups.map((group) => `
+    <section>
+      <h3 class="text-xs text-sub dark:text-sub-dk mb-2">${group.title}</h3>
+      <div class="border-t border-line dark:border-line-dk">
+        ${['ทั้งหมด', ...group.options].map((value) => {
+          const count = value === 'ทั้งหมด' ? tickets.length : countBy(tickets, group.dataKey, value);
+          const active = activeFilters[group.filterKey] === value;
+          return `
+            <button type="button" data-filter-key="${group.filterKey}" data-filter-value="${escapeHtml(value)}"
+              class="w-full min-h-9 flex items-center justify-between gap-3 py-2 border-b border-line dark:border-line-dk text-left text-xs transition-colors ${active ? 'text-navy dark:text-navy-dk font-medium' : 'hover:text-navy dark:hover:text-navy-dk'}">
+              <span>${escapeHtml(value)}</span><span class="font-mono text-[11px] text-sub dark:text-sub-dk">${count}</span>
+            </button>`;
+        }).join('')}
+      </div>
+    </section>`).join('');
+}
+
+function statusHtml(status) {
+  return `<span class="inline-flex items-center gap-2 whitespace-nowrap"><span class="status-dot" style="background:${statusColors[status] || '#8A8578'}"></span>${escapeHtml(status)}</span>`;
+}
+
+function filteredTickets() {
+  return tickets
+    .filter((ticket) => activeFilters.status === 'ทั้งหมด' || ticket.Status === activeFilters.status)
+    .filter((ticket) => activeFilters.device === 'ทั้งหมด' || ticket.DeviceType === activeFilters.device)
+    .filter((ticket) => activeFilters.department === 'ทั้งหมด' || ticket.Department === activeFilters.department)
+    .sort((a, b) => new Date(b.Timestamp) - new Date(a.Timestamp));
+}
+
+function renderTickets() {
+  const visible = filteredTickets();
+  const count = (status) => tickets.filter((ticket) => ticket.Status === status).length;
+  $('summaryLine').innerHTML = `งานทั้งหมด <span class="font-mono text-ink dark:text-ink-dk">${tickets.length}</span> · รอรับเรื่อง <span class="font-mono text-ink dark:text-ink-dk">${count('รอรับเรื่อง')}</span> · กำลังซ่อม <span class="font-mono text-ink dark:text-ink-dk">${count('กำลังดำเนินการ')}</span> · เสร็จแล้ว <span class="font-mono text-ink dark:text-ink-dk">${count('ซ่อมเสร็จแล้ว')}</span> · ส่งเคลม <span class="font-mono text-ink dark:text-ink-dk">${count('ซ่อมไม่ได้/ส่งเคลม')}</span>`;
+  $('ticketRows').removeAttribute('aria-busy');
+  $('ticketRows').innerHTML = visible.map((ticket) => `
+    <tr data-ticket-id="${escapeHtml(ticket.TicketID)}" tabindex="0" role="button" aria-label="เปิดรายละเอียด ${escapeHtml(ticket.TicketID)}"
+      class="border-b last:border-b-0 border-line dark:border-line-dk cursor-pointer hover:bg-paper/70 dark:hover:bg-paper-dk/60 focus:outline-none focus:bg-paper dark:focus:bg-paper-dk transition-colors">
+      <td class="px-3 py-3 font-mono text-xs text-navy dark:text-navy-dk whitespace-nowrap">${escapeHtml(ticket.TicketID)}</td>
+      <td class="px-3 py-3 font-mono text-xs whitespace-nowrap">${escapeHtml(formatDate(ticket.Timestamp))}</td>
+      <td class="px-3 py-3 whitespace-nowrap">${escapeHtml(ticket.DeviceType)}</td>
+      <td class="px-3 py-3 min-w-[210px] max-w-[310px] leading-relaxed">${escapeHtml(ticket.Problem)}</td>
+      <td class="px-3 py-3 whitespace-nowrap">${escapeHtml(ticket.ReporterName)}<span class="block text-xs text-sub dark:text-sub-dk mt-0.5">${escapeHtml(ticket.Department)}</span></td>
+      <td class="px-3 py-3 whitespace-nowrap">${escapeHtml(ticket.Technician || '—')}</td>
+      <td class="px-3 py-3 text-xs">${statusHtml(ticket.Status)}</td>
+    </tr>`).join('');
+  $('emptyMsg').classList.toggle('hidden', visible.length > 0);
+}
+
+function renderAll() {
+  renderFilters();
+  renderTickets();
+}
+
+function flash(message, isError = false) {
+  clearTimeout(flashTimer);
+  $('flashMsg').textContent = message;
+  $('flashMsg').classList.remove('hidden', 'text-[#1F5C42]', 'text-[#B3472E]');
+  $('flashMsg').classList.add(isError ? 'text-[#B3472E]' : 'text-[#1F5C42]');
+  flashTimer = setTimeout(() => $('flashMsg').classList.add('hidden'), 5500);
+}
+
+function openPanel() {
+  $('slidePanel').classList.remove('translate-x-full');
+  $('slidePanel').setAttribute('aria-hidden', 'false');
+  $('panelBackdrop').classList.remove('hidden');
+  document.body.classList.add('overflow-hidden');
+  setTimeout(() => $('panelClose').focus(), 80);
+}
+
+function closePanel() {
+  $('slidePanel').classList.add('translate-x-full');
+  $('slidePanel').setAttribute('aria-hidden', 'true');
+  $('panelBackdrop').classList.add('hidden');
+  document.body.classList.remove('overflow-hidden');
+}
+
+function openNewTicket() {
+  if (!currentSession || currentSession.role !== 'user') return;
+  const user = currentSession.user;
+  $('panelTitle').textContent = 'ใบแจ้งซ่อม';
+  $('panelTicketNo').textContent = 'เลขที่เอกสารจะกำหนดเมื่อส่งข้อมูล';
+  $('panelBody').innerHTML = `
+    <form id="newTicketForm" class="space-y-4" novalidate>
+      <div><label for="reporterName" class="${labelClass}">ชื่อผู้แจ้ง</label><input id="reporterName" value="${escapeHtml(user.FullName)}" class="${inputClass}" readonly></div>
+      <div><label for="department" class="${labelClass}">หน่วยงาน/แผนก</label><input id="department" value="${escapeHtml(user.Department)}" class="${inputClass}" readonly></div>
+      <div><label for="contact" class="${labelClass}">เบอร์ติดต่อภายใน</label><input id="contact" name="contact" inputmode="numeric" class="${inputClass}" placeholder="เช่น 2311" required></div>
+      <div>
+        <label for="deviceType" class="${labelClass}">ประเภทอุปกรณ์</label>
+        <select id="deviceType" name="deviceType" class="${inputClass}" required><option value="" selected disabled>เลือกประเภทอุปกรณ์</option>${deviceOptions.map((item) => `<option>${escapeHtml(item)}</option>`).join('')}</select>
+      </div>
+      <div><label for="assetCode" class="${labelClass}">รหัสครุภัณฑ์</label><input id="assetCode" name="assetCode" class="${inputClass} font-mono" placeholder="เช่น IT-PC-03-118"></div>
+      <div><label for="location" class="${labelClass}">สถานที่ตั้งอุปกรณ์ (อาคาร/ชั้น/ห้อง)</label><input id="location" name="location" class="${inputClass}" placeholder="อาคาร A / ชั้น 3 / ห้องบัญชี" required></div>
+      <div><label for="problem" class="${labelClass}">อาการเสีย</label><textarea id="problem" name="problem" rows="4" class="${inputClass} resize-y" placeholder="ระบุอาการและสิ่งที่เกิดขึ้นโดยละเอียด" required></textarea></div>
+      <fieldset>
+        <legend class="${labelClass}">ระดับความเร่งด่วน</legend>
+        <div class="space-y-2 text-sm">${urgencyOptions.map((item, index) => `<label class="flex items-start gap-2 cursor-pointer"><input type="radio" name="urgency" value="${item}" class="mt-1 accent-[#1E3A5F]" ${index === 0 ? 'checked' : ''}><span>${item}</span></label>`).join('')}</div>
+      </fieldset>
+      <div>
+        <label for="ticketPhoto" class="${labelClass}">แนบรูปถ่าย</label>
+        <label for="ticketPhoto" class="block border border-dashed border-[#8A8578] px-4 py-5 text-center text-xs text-sub dark:text-sub-dk cursor-pointer hover:border-navy dark:hover:border-navy-dk hover:text-navy dark:hover:text-navy-dk transition-colors">
+          เลือกรูปถ่ายอาการเสีย<input id="ticketPhoto" type="file" accept="image/jpeg,image/png,image/webp" multiple class="sr-only"><span id="fileNames" class="block mt-1 font-mono text-[11px]">ยังไม่ได้เลือกไฟล์ · สูงสุด 3 รูป</span>
+        </label>
+      </div>
+      <p id="ticketFormError" class="hidden text-xs text-[#B3472E]" role="alert"></p>
+      <div class="pt-2 flex items-center gap-4">
+        <button type="submit" class="bg-navy dark:bg-navy-dk text-white dark:text-[#211D19] px-4 py-2.5 text-sm font-medium rounded-none hover:opacity-90 active:opacity-80 transition-opacity">ส่งใบแจ้งซ่อม</button>
+        <button type="button" id="cancelTicket" class="text-sm text-sub dark:text-sub-dk hover:text-navy dark:hover:text-navy-dk hover:underline underline-offset-2">ยกเลิก</button>
+      </div>
+    </form>`;
+
+  openPanel();
+  $('cancelTicket').addEventListener('click', closePanel);
+  $('ticketPhoto').addEventListener('change', (event) => {
+    const names = [...event.target.files].map((file) => file.name);
+    if (names.length > 3) {
+      event.target.value = '';
+      $('fileNames').textContent = 'เลือกได้ไม่เกิน 3 รูป';
+      return;
+    }
+    $('fileNames').textContent = names.length ? names.join(', ') : 'ยังไม่ได้เลือกไฟล์ · สูงสุด 3 รูป';
+  });
+  $('newTicketForm').addEventListener('submit', submitNewTicket);
+}
+
+function buildMetadataNote(data, attachmentNames) {
+  return [
+    `เบอร์ติดต่อ: ${String(data.get('contact')).trim()}`,
+    `รหัสครุภัณฑ์: ${String(data.get('assetCode')).trim() || 'ไม่ระบุ'}`,
+    `สถานที่: ${String(data.get('location')).trim()}`,
+    `ไฟล์แนบ: ${attachmentNames.length ? attachmentNames.join(', ') : 'ไม่มี'}`
+  ].join('\n');
+}
+
+async function submitNewTicket(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  if (!form.reportValidity()) return;
+  const submitButton = form.querySelector('[type="submit"]');
+  const data = new FormData(form);
+  const selectedFiles = [...$('ticketPhoto').files];
+  const attachmentNames = selectedFiles.map((file) => file.name);
+  setButtonBusy(submitButton, true, selectedFiles.length ? 'กำลังเตรียมรูป...' : 'กำลังส่งข้อมูล...');
+  $('ticketFormError').classList.add('hidden');
+
+  try {
+    const attachments = await prepareImageAttachments(selectedFiles);
+    submitButton.textContent = 'กำลังส่งข้อมูล...';
+    const ticket = await apiPost({
+      action: 'createTicket',
+      token: currentSession.token,
+      reporterName: currentSession.user.FullName,
+      department: currentSession.user.Department,
+      reporterEmail: currentSession.user.Email,
+      contact: String(data.get('contact')).trim(),
+      deviceType: String(data.get('deviceType')),
+      assetCode: String(data.get('assetCode')).trim(),
+      location: String(data.get('location')).trim(),
+      problem: String(data.get('problem')).trim(),
+      urgency: String(data.get('urgency')),
+      attachmentNames,
+      attachments,
+      note: buildMetadataNote(data, attachmentNames)
+    });
+    closePanel();
+    await loadTickets();
+    flash(`ส่งใบแจ้งซ่อม ${ticket.TicketID} เรียบร้อยแล้ว`);
+  } catch (error) {
+    $('ticketFormError').textContent = friendlyError(error);
+    $('ticketFormError').classList.remove('hidden');
+    setButtonBusy(submitButton, false);
+  }
+}
+
+function detailItem(label, value, mono = false) {
+  return `<div class="py-2.5 border-b border-line dark:border-line-dk"><dt class="text-xs text-sub dark:text-sub-dk mb-1">${label}</dt><dd class="text-sm whitespace-pre-line leading-relaxed ${mono ? 'font-mono text-xs' : ''}">${escapeHtml(value || '—')}</dd></div>`;
+}
+
+function parseMetadata(note = '') {
+  const metadata = { contact: '', assetCode: '', location: '', attachments: '', images: [], detailNote: '' };
+  const remaining = [];
+  String(note).split(/\r?\n/).forEach((line) => {
+    if (line.startsWith('เบอร์ติดต่อ:')) metadata.contact = line.slice('เบอร์ติดต่อ:'.length).trim();
+    else if (line.startsWith('รหัสครุภัณฑ์:')) metadata.assetCode = line.slice('รหัสครุภัณฑ์:'.length).trim();
+    else if (line.startsWith('สถานที่:')) metadata.location = line.slice('สถานที่:'.length).trim();
+    else if (line.startsWith('ไฟล์แนบ:')) metadata.attachments = line.slice('ไฟล์แนบ:'.length).trim();
+    else if (line.startsWith('รูปภาพ:')) {
+      try {
+        const images = JSON.parse(line.slice('รูปภาพ:'.length).trim());
+        metadata.images = Array.isArray(images) ? images : [];
+      } catch (error) { metadata.images = []; }
+    }
+    else if (line.trim()) remaining.push(line.trim());
+  });
+  metadata.detailNote = remaining.join('\n');
+  return metadata;
+}
+
+function mergeMetadataNote(ticket, note) {
+  const metadata = parseMetadata(ticket.Note);
+  return [
+    metadata.contact && `เบอร์ติดต่อ: ${metadata.contact}`,
+    metadata.assetCode && `รหัสครุภัณฑ์: ${metadata.assetCode}`,
+    metadata.location && `สถานที่: ${metadata.location}`,
+    metadata.attachments && `ไฟล์แนบ: ${metadata.attachments}`,
+    metadata.images.length && `รูปภาพ: ${JSON.stringify(metadata.images)}`,
+    note
+  ].filter(Boolean).join('\n');
+}
+
+function buildTimeline(ticket, metadata) {
+  const entries = [{ at: ticket.Timestamp, text: 'ส่งใบแจ้งซ่อมแล้ว' }];
+  if (ticket.StartedAt) entries.push({ at: ticket.StartedAt, text: `เริ่มดำเนินการ${ticket.Technician ? ` · มอบหมายให้ ${ticket.Technician}` : ''}` });
+  if (metadata.detailNote) entries.push({ at: ticket.CompletedAt || ticket.StartedAt || ticket.Timestamp, text: metadata.detailNote });
+  if (ticket.CompletedAt) entries.push({ at: ticket.CompletedAt, text: ticket.Status });
+  return entries.sort((a, b) => new Date(a.at) - new Date(b.at));
+}
+
+function renderPanelSkeleton(ticketId) {
+  $('panelTitle').textContent = 'รายละเอียดใบแจ้งซ่อม';
+  $('panelTicketNo').textContent = ticketId;
+  $('panelBody').innerHTML = `<div class="space-y-5" aria-busy="true">${Array.from({ length: 8 }, (_, index) => `<div class="pb-3 border-b border-line dark:border-line-dk"><span class="skeleton-block block h-2 w-20"></span><span class="skeleton-block block h-3 mt-2 ${index % 3 === 0 ? 'w-full' : 'w-2/3'}"></span></div>`).join('')}</div>`;
+}
+
+async function openTicketDetail(ticketId) {
+  if (!currentSession) return;
+  renderPanelSkeleton(ticketId);
+  openPanel();
+  try {
+    const ticket = await apiGet({ resource: 'ticket', ticketId, token: currentSession.token });
+    if ($('panelTicketNo').textContent !== ticketId || $('slidePanel').getAttribute('aria-hidden') === 'true') return;
+    const index = tickets.findIndex((item) => item.TicketID === ticketId);
+    if (index >= 0) tickets[index] = ticket;
+    renderTicketDetail(ticket);
+  } catch (error) {
+    $('panelBody').innerHTML = `<p class="text-sm text-[#B3472E]" role="alert">${escapeHtml(friendlyError(error))}</p>`;
+  }
+}
+
+function renderTicketDetail(ticket) {
+  const metadata = parseMetadata(ticket.Note);
+  const timeline = buildTimeline(ticket, metadata);
+  const adminControls = currentSession.role === 'admin' ? `
+    <section class="mt-7 pt-5 border-t border-line dark:border-line-dk">
+      <h3 class="font-serif text-base font-semibold mb-4">จัดการใบงาน</h3>
+      <form id="updateTicketForm" class="space-y-4">
+        <div><label for="ticketStatus" class="${labelClass}">สถานะงาน</label><select id="ticketStatus" name="status" class="${inputClass}">${statusOptions.map((status) => `<option ${status === ticket.Status ? 'selected' : ''}>${escapeHtml(status)}</option>`).join('')}</select></div>
+        <div><label for="technician" class="${labelClass}">ผู้รับผิดชอบ</label><input id="technician" name="technician" value="${escapeHtml(ticket.Technician)}" class="${inputClass}" placeholder="เช่น คุณสมชาย"></div>
+        <div><label for="actionNote" class="${labelClass}">บันทึกเพิ่มเติม</label><textarea id="actionNote" name="note" rows="3" class="${inputClass} resize-y" placeholder="ผลการตรวจสอบหรือการดำเนินการ">${escapeHtml(metadata.detailNote)}</textarea></div>
+        <p id="updateFormError" class="hidden text-xs text-[#B3472E]" role="alert"></p>
+        <button type="submit" class="bg-navy dark:bg-navy-dk text-white dark:text-[#211D19] px-4 py-2.5 text-sm font-medium rounded-none hover:opacity-90 transition-opacity">บันทึกการดำเนินการ</button>
+      </form>
+    </section>` : '';
+
+  $('panelTitle').textContent = 'รายละเอียดใบแจ้งซ่อม';
+  $('panelTicketNo').textContent = ticket.TicketID;
+  $('panelBody').innerHTML = `
+    <div class="flex items-center justify-between gap-3 pb-3 border-b border-line dark:border-line-dk"><span class="text-xs text-sub dark:text-sub-dk">สถานะปัจจุบัน</span><span class="text-xs">${statusHtml(ticket.Status)}</span></div>
+    <dl>
+      ${detailItem('วันที่แจ้ง', formatDate(ticket.Timestamp), true)}
+      ${detailItem('ผู้แจ้ง–แผนก', `${ticket.ReporterName} · ${ticket.Department}`)}
+      ${detailItem('อีเมล / เบอร์ติดต่อ', `${ticket.ReporterEmail || '—'} · ต่อ ${metadata.contact || '—'}`)}
+      ${detailItem('ประเภทอุปกรณ์', ticket.DeviceType)}
+      ${detailItem('รหัสครุภัณฑ์', metadata.assetCode || 'ไม่ระบุ', true)}
+      ${detailItem('สถานที่ตั้ง', metadata.location || 'ไม่ระบุ')}
+      ${detailItem('อาการเสีย', ticket.Problem)}
+      ${detailItem('ระดับความเร่งด่วน', ticket.Urgency)}
+      ${detailItem('ผู้รับผิดชอบ', ticket.Technician || 'ยังไม่ได้มอบหมาย')}
+      ${detailItem('บันทึกล่าสุด', metadata.detailNote || 'ยังไม่มีบันทึก')}
+      <div class="py-2.5 border-b border-line dark:border-line-dk">
+        <dt class="text-xs text-sub dark:text-sub-dk mb-2">รูปถ่ายแนบ</dt>
+        <dd id="attachmentGallery" class="grid grid-cols-2 gap-2">${attachmentGalleryHtml(metadata)}</dd>
+      </div>
+    </dl>
+    <section class="mt-7"><h3 class="font-serif text-base font-semibold mb-4">บันทึกการดำเนินการ</h3><div>${timeline.map((entry) => `<div class="timeline-item"><p class="font-mono text-[11px] text-sub dark:text-sub-dk">${escapeHtml(formatDate(entry.at))}</p><p class="text-sm mt-1 leading-relaxed">${escapeHtml(entry.text)}</p></div>`).join('')}</div></section>
+    ${adminControls}`;
+
+  loadAttachmentPreviews(ticket, metadata);
+  if (currentSession.role === 'admin') $('updateTicketForm').addEventListener('submit', (event) => updateTicket(event, ticket));
+}
+
+function attachmentGalleryHtml(metadata) {
+  if (!metadata.images.length) {
+    return `<span class="col-span-2 text-sm">${escapeHtml(metadata.attachments || 'ไม่มีไฟล์แนบ')}</span>`;
+  }
+  return metadata.images.map((attachment, index) => `
+    <div data-attachment-index="${index}" class="aspect-[4/3] border border-line dark:border-line-dk bg-paper dark:bg-paper-dk flex items-center justify-center overflow-hidden">
+      <span class="skeleton-block block w-2/3 h-3" aria-label="กำลังโหลด ${escapeHtml(attachment.name || `รูปที่ ${index + 1}`)}"></span>
+    </div>`).join('');
+}
+
+async function loadAttachmentPreviews(ticket, metadata) {
+  if (!metadata.images.length) return;
+  await Promise.all(metadata.images.map(async (attachment, index) => {
+    const slot = document.querySelector(`#attachmentGallery [data-attachment-index="${index}"]`);
+    if (!slot) return;
+    try {
+      const image = await apiGet({
+        resource: 'attachment',
+        token: currentSession.token,
+        ticketId: ticket.TicketID,
+        fileId: attachment.fileId
+      });
+      if (!document.body.contains(slot)) return;
+      const source = `data:${image.mimeType};base64,${image.base64}`;
+      slot.innerHTML = `<button type="button" class="w-full h-full cursor-zoom-in" title="เปิด ${escapeHtml(image.name)}"><img src="${source}" alt="${escapeHtml(image.name)}" class="w-full h-full object-cover"></button>`;
+      slot.querySelector('button').addEventListener('click', () => openImagePreview(source, image.name));
+    } catch (error) {
+      slot.innerHTML = `<span class="px-2 text-center text-xs text-[#B3472E]">โหลดรูปไม่สำเร็จ</span>`;
+    }
+  }));
+}
+
+function openImagePreview(source, name) {
+  const preview = document.createElement('div');
+  preview.className = 'fixed inset-0 z-50 bg-[#211D19]/90 p-4 sm:p-8 flex items-center justify-center';
+  preview.setAttribute('role', 'dialog');
+  preview.setAttribute('aria-label', `รูปภาพ ${name}`);
+  preview.innerHTML = `
+    <button type="button" class="absolute top-4 right-4 border border-white/50 bg-[#211D19] text-white px-3 py-2 text-sm hover:border-white transition-colors">ปิด</button>
+    <img src="${source}" alt="${escapeHtml(name)}" class="max-w-full max-h-full object-contain">`;
+  const close = () => preview.remove();
+  preview.addEventListener('click', (event) => { if (event.target === preview) close(); });
+  preview.querySelector('button').addEventListener('click', close);
+  document.body.appendChild(preview);
+  preview.querySelector('button').focus();
+}
+
+async function updateTicket(event, ticket) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const submitButton = form.querySelector('[type="submit"]');
+  const data = new FormData(form);
+  const status = String(data.get('status'));
+  const technician = String(data.get('technician')).trim();
+  const note = String(data.get('note')).trim();
+  const oldMetadata = parseMetadata(ticket.Note);
+  if (status === ticket.Status && technician === (ticket.Technician || '') && note === oldMetadata.detailNote) {
+    $('updateFormError').textContent = 'กรุณาเปลี่ยนข้อมูลหรือเพิ่มบันทึกการดำเนินการ';
+    $('updateFormError').classList.remove('hidden');
+    return;
+  }
+
+  setButtonBusy(submitButton, true, 'กำลังบันทึก...');
+  $('updateFormError').classList.add('hidden');
+  try {
+    const updated = await apiPost({
+      action: 'updateTicket',
+      token: currentSession.token,
+      ticketId: ticket.TicketID,
+      status,
+      technician,
+      note: mergeMetadataNote(ticket, note)
+    });
+    closePanel();
+    await loadTickets({ preserveFilters: true });
+    flash(`บันทึกการดำเนินการ ${updated.TicketID} เรียบร้อยแล้ว`);
+  } catch (error) {
+    $('updateFormError').textContent = friendlyError(error);
+    $('updateFormError').classList.remove('hidden');
+    setButtonBusy(submitButton, false);
+  }
+}
+
+document.querySelectorAll('[data-theme-toggle]').forEach((button) => {
+  button.addEventListener('click', () => {
+    document.documentElement.classList.toggle('dark');
+    const isDark = document.documentElement.classList.contains('dark');
+    localStorage.setItem('repair-theme', isDark ? 'dark' : 'light');
+    document.querySelectorAll('[data-theme-toggle]').forEach((item) => item.setAttribute('aria-label', isDark ? 'เปลี่ยนเป็นธีมสว่าง' : 'เปลี่ยนเป็นธีมมืด'));
+  });
+});
+
+$('tabLogin').addEventListener('click', () => setAuthTab('login'));
+$('tabRegister').addEventListener('click', () => setAuthTab('register'));
+$('adminToggle').addEventListener('click', () => {
+  $('adminForm').classList.toggle('hidden');
+  if (!$('adminForm').classList.contains('hidden')) $('adminCode').focus();
+});
+
+$('loginForm').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  clearErrors(form);
+  const username = $('loginUsername').value.trim().toLowerCase();
+  const password = $('loginPassword').value;
+  let valid = true;
+  if (!username) { setError('errLoginUsername', 'กรุณากรอกชื่อผู้ใช้'); valid = false; }
+  if (!password) { setError('errLoginPassword', 'กรุณากรอกรหัสผ่าน'); valid = false; }
+  if (!valid) return;
+  const submitButton = form.querySelector('[type="submit"]');
+  setButtonBusy(submitButton, true, 'กำลังเข้าสู่ระบบ...');
+  try {
+    const result = await apiPost({ action: 'login', username, password });
+    saveSession({ role: 'user', token: result.token, user: result.user });
+    await showApp();
+  } catch (error) {
+    setError('errLogin', friendlyError(error));
+  } finally {
+    setButtonBusy(submitButton, false);
+  }
+});
+
+$('registerForm').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  clearErrors(form);
+  const username = $('regUsername').value.trim().toLowerCase();
+  const password = $('regPassword').value;
+  const confirmPassword = $('regConfirm').value;
+  const fullName = $('regFullName').value.trim();
+  const department = $('regDepartment').value.trim();
+  const email = $('regEmail').value.trim();
+  let valid = true;
+  if (!/^[a-z][a-z0-9._-]{2,19}$/.test(username)) { setError('errRegUsername', 'ใช้ภาษาอังกฤษ 3–20 ตัว เริ่มด้วยตัวอักษร'); valid = false; }
+  if (password.length < 4) { setError('errRegPassword', 'รหัสผ่านต้องมีอย่างน้อย 4 ตัวอักษร'); valid = false; }
+  if (confirmPassword !== password) { setError('errRegConfirm', 'รหัสผ่านยืนยันไม่ตรงกัน'); valid = false; }
+  if (!fullName) { setError('errRegFullName', 'กรุณากรอกชื่อ-นามสกุล'); valid = false; }
+  if (!department) { setError('errRegDepartment', 'กรุณากรอกหน่วยงาน/แผนก'); valid = false; }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setError('errRegEmail', 'กรุณากรอกอีเมลให้ถูกต้อง'); valid = false; }
+  if (!valid) return;
+
+  const submitButton = form.querySelector('[type="submit"]');
+  setButtonBusy(submitButton, true, 'กำลังลงทะเบียน...');
+  try {
+    const result = await apiPost({ action: 'register', username, password, fullName, department, email });
+    saveSession({ role: 'user', token: result.token, user: result.user });
+    await showApp();
+    flash('ลงทะเบียนเรียบร้อยแล้ว เริ่มส่งใบแจ้งซ่อมได้ทันที');
+  } catch (error) {
+    const message = friendlyError(error);
+    if (error.status === 409) setError('errRegUsername', message);
+    else setError('errRegEmail', message);
+  } finally {
+    setButtonBusy(submitButton, false);
+  }
+});
+
+$('adminForm').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  setError('errAdmin');
+  const adminCode = $('adminCode').value;
+  if (!adminCode) { setError('errAdmin', 'กรุณากรอกรหัสเข้าใช้งานผู้ดูแล'); return; }
+  const submitButton = form.querySelector('[type="submit"]');
+  setButtonBusy(submitButton, true, 'กำลังตรวจสอบ...');
+  try {
+    const result = await apiPost({ action: 'adminLogin', adminCode });
+    saveSession({ role: 'admin', token: result.token });
+    await showApp();
+  } catch (error) {
+    setError('errAdmin', friendlyError(error));
+  } finally {
+    setButtonBusy(submitButton, false);
+  }
+});
+
+$('filterGroups').addEventListener('click', (event) => {
+  const button = event.target.closest('[data-filter-key]');
+  if (!button) return;
+  activeFilters[button.dataset.filterKey] = button.dataset.filterValue;
+  renderAll();
+  if (window.innerWidth < 768) {
+    $('sidebar').classList.add('hidden');
+    $('filterToggleMobile').textContent = 'ตัวกรอง';
+  }
+});
+
+$('ticketRows').addEventListener('click', (event) => {
+  const row = event.target.closest('[data-ticket-id]');
+  if (row) openTicketDetail(row.dataset.ticketId);
+});
+$('ticketRows').addEventListener('keydown', (event) => {
+  if (!['Enter', ' '].includes(event.key)) return;
+  const row = event.target.closest('[data-ticket-id]');
+  if (row) { event.preventDefault(); openTicketDetail(row.dataset.ticketId); }
+});
+$('filterToggleMobile').addEventListener('click', () => {
+  const willOpen = $('sidebar').classList.contains('hidden');
+  $('sidebar').classList.toggle('hidden');
+  $('filterToggleMobile').textContent = willOpen ? 'ซ่อนตัวกรอง' : 'ตัวกรอง';
+});
+$('refreshBtn').addEventListener('click', () => loadTickets({ preserveFilters: true }));
+$('newTicketBtn').addEventListener('click', openNewTicket);
+$('logoutBtn').addEventListener('click', () => logout());
+$('panelClose').addEventListener('click', closePanel);
+$('panelBackdrop').addEventListener('click', closePanel);
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && $('slidePanel').getAttribute('aria-hidden') === 'false') closePanel();
+});
+
+if (currentSession) {
+  showApp().catch((error) => {
+    logout({ notifyServer: false });
+    setError('errLogin', friendlyError(error));
+  });
+}
+
+</script>
+</body>
+</html>
